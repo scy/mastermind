@@ -1,0 +1,53 @@
+h1. mastermind — a framework for structuring and filtering reminders
+
+p{margin-left:5em;}. *Please note:* Without knowing how to use "remind":http://www.roaringpenguin.com/products/remind, this tool will be of very little use to you.
+
+There will be some kind of introduction text here eventually.
+
+
+h2. Syntax
+
+h3. Design decisions
+
+The goal is to be able to extend _remind_, without having to be able to parse the complex (and, to be honest, rather hackish) syntax of reminder files. The most simple thing would be to just add some structure to the @MSG@ clauses, which is kind of what we do.[1] We have chosen "JSON":http://json.org/ for this because of its simplicity and the availability of parsing libraries for every modern programming language. Also, JSON can easily be written and read by humans.
+
+However, @MSG@ clauses are not simple strings. Like most data in a reminder file, they will be interpreted by the _expression pasting_ mechanism. This means that square brackets (@[]@), which are an essential part of the JSON syntax, are treated specially. If you simply insert a JSON string in a @MSG@, _remind_ will most likely fail to parse the reminder. Therefore, we’re not inserting our data into the reminder clause itself, but in a comment.
+
+In _remind_, comments start with the @#@ or @;@ character and continue up to the next line break. However, comments are not allowed in the same line as actual remind code; they have to stand in a line on their own with the only thing allowed before the comment character being whitespace. This leads us to the following syntax.
+
+fn1. Note that we currently do not support clauses other than @MSG@, even if it would probably make sense for some. We do not support @MSF@, because we have not yet tested whether the reformatting applied to the bodies will cause trouble for _mastermind_, and we do not support @CAL@ because nobody requested that yet.
+
+h3. Format
+
+It’s easier to start with an example.
+
+<pre><code>
+REM Tue AT 18:00 DURATION 4:00 MSG League of Extraordinary Gentlemen meeting
+#+ {"place": "The Batcave", "tags": ["loeg", "@batcave", "meeting"]}
+</code></pre>
+
+This is a simple reminder which triggers every Tuesday and goes from 6pm to 10pm. Its “message” (or “title”, or “description”) says that it’s a meeting of your local superhero group. All of this is normal _remind_ syntax.
+
+The second line is where things get interesting. It starts with a comment character, followed by a plus sign, followed by JSON data defining where the event takes place. Additionally, a set of tags is added that allows you to filter your events etc. What you write inside this JSON data is completely up to you. _mastermind_ is just a framework that allows you to do all kinds of transformations on your reminders.
+
+Next, a slightly more complicated example before we define the parsing rules in detail. For convenience, line numbers were added.
+
+<pre><code>
+ 1   REM 13 SATISFY wkdaynum(trigdate()) == 5
+ 2   IF trigvalid()
+ 3       REM [trigger(trigdate())] +2 MSG \
+ 4       Friday the 13th is %b.
+ 5       # Here comes the JSON part.
+ 6       ;+   {"place": "everywhere",
+ 7       # Possibly with comments inbetween.
+ 8       #+ "leave_the_house": false}
+ 9   ENDIF
+</code></pre>
+
+First of all, lines which are empty, contain nothing but whitespace or contain a comment which is not a _mastermind_ comment will be ignored. In our example, these would be lines 5 and 7.
+
+In order to successfully recognize all @REM@ commands, lines which are continued using @\@ as the last character will be concatenated. (After ignoring comments, else a comment ending in @\@ would hide the next line.)
+
+Everything that is a _mastermind_ comment and *immediately* follows a @REM@ command will be parsed and associated with that @REM@ command. “Immediately” means that there may be no blank line or _remind_ command between them (non-_mastermind_ comments are fine). _mastermind_ comments may extend over several lines (_without_ using @\@) and use @#@ and @;@ as comment character interchangably.
+
+After a _mastermind_ comment has been completely read (either because the next line contains something that’s not a comment or because the file ends), the JSON will be parsed and possible filter and transform predicates will be applied.
